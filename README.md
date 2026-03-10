@@ -6,7 +6,7 @@ Tổng hợp các bài viết kỹ thuật hay, dịch sang tiếng Việt để
 
 - **Framework:** Astro 6
 - **Deploy:** Vercel
-- **Content:** JSON (src/content/articles/)
+- **Content:** MDX (src/content/articles/)
 
 ## Danh sách bài viết
 
@@ -22,10 +22,12 @@ Tổng hợp các bài viết kỹ thuật hay, dịch sang tiếng Việt để
 | `pnpm dev` | Start dev server (localhost:4321) |
 | `pnpm build` | Build production |
 | `pnpm preview` | Preview build |
+| `pnpm translate <url>` | Dịch bài viết từ URL (Gemini CLI) |
 
 ## Thêm bài viết mới
 
-1. Tạo file JSON trong `src/content/articles/<slug-tieng-viet>.json`
-2. JSON cần có: `title_en`, `title_vi`, `description_en`, `description_vi`, `author`, `published`, `source_url`, `tags`, `sections`
-3. Deploy — Astro auto detect route từ filename
-4. Update bảng danh sách ở trên
+```bash
+pnpm translate https://example.com/blog/article
+```
+
+Gemini CLI sẽ fetch + dịch + tạo file MDX tự động. Astro auto detect route từ filename. Deploy Vercel là xong.

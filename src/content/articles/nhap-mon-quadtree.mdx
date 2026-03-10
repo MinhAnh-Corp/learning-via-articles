@@ -1,0 +1,74 @@
+---
+title_en: "An interactive intro to quadtrees"
+title_vi: "Nhập môn Quadtree qua các ví dụ trực quan"
+description_en: "A visual, interactive guide to understanding quadtrees - from spatial search to collision detection and image compression"
+description_vi: "Hướng dẫn trực quan và sinh động về Quadtree - từ tìm kiếm không gian đến phát hiện va chạm và nén hình ảnh"
+author: "growingSWE"
+published: "2026-02-24"
+source_url: "https://growingswe.com/blog/quadtrees"
+tags: ["data-structures", "algorithms"]
+---
+
+## Lời mở đầu
+
+Khi tìm hiểu các bài viết về thiết kế hệ thống (system design), tôi thường xuyên thấy Uber nhắc đến việc sử dụng quadtree. Điều này thôi thúc tôi tìm hiểu sâu hơn để hiểu tại sao cấu trúc dữ liệu này lại quan trọng đến vậy.
+
+## Vấn đề cần giải quyết
+
+Hãy tưởng tượng một ứng dụng bản đồ chứa hàng triệu điểm dữ liệu như nhà hàng, trạm xăng hay các địa danh. Khi người dùng thực hiện câu lệnh "Tìm các địa điểm quanh đây?", cách tiếp cận thông thường (naive approach) là tính toán khoảng cách tới từng điểm một trong danh sách. Với quy mô hàng triệu điểm, việc tính toán này trở nên cực kỳ tốn kém và chậm chạp, đặc biệt là trên các thiết bị di động cần cập nhật vị trí liên tục.
+
+## Tìm kiếm vét cạn (Brute-Force Search)
+
+Trong thuật toán vét cạn, những điểm ở tận phía bên kia của bản đồ cũng bị đối xử y hệt như những điểm ngay sát cạnh người dùng, gây ra sự lãng phí tài nguyên tính toán vô ích.
+
+> **Demo tương tác:** Minh họa việc kiểm tra từng điểm một trên bản đồ khiến hiệu năng sụt giảm khi số lượng điểm tăng lên. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Chia nhỏ không gian
+
+Tác giả sử dụng một phép so sánh thú vị: giống như khi bạn tìm chìa khóa bị mất trong phòng, thay vì soi xét từng milimét một cách tuần tự, bạn sẽ chia phòng thành từng khu vực để tìm kiếm. Quadtree hoạt động dựa trên nguyên lý đó: Nó chia một vùng hình chữ nhật thành bốn phần bằng nhau (tây bắc, đông bắc, tây nam, đông nam). Khi mật độ điểm trong một khu vực vượt quá giới hạn cho phép, khu vực đó sẽ tiếp tục được chia nhỏ. Điều này tạo ra một cấu trúc phân cấp không gian linh hoạt: nơi nào đông đúc thì được chia nhỏ chi tiết, nơi nào thưa thớt thì giữ nguyên diện tích lớn.
+
+> **Demo tương tác:** Người dùng có thể thêm điểm vào bản đồ để quan sát cách các ô vuông tự động chia nhỏ khi đạt ngưỡng capacity. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Nguyên lý cấu trúc cây
+
+Nút gốc (root node) đại diện cho toàn bộ không gian. Mỗi lần chia vùng sẽ tạo ra bốn nút con tương ứng. Các nút lá (leaf node) là nơi thực sự lưu trữ dữ liệu điểm. Cách tổ chức lưới không gian này tương ứng trực tiếp với cấu trúc cây phân cấp. Lợi thế lớn nhất là: Tương tự như chiến lược loại bỏ một nửa của binary search, quadtree loại bỏ ba phần tư không gian ở mỗi cấp độ, giúp đưa độ phức tạp tìm kiếm về mức log₄(n) thay vì quét tuyến tính toàn bộ dữ liệu.
+
+## Tinh chỉnh ngưỡng phân tách (Split Capacity)
+
+Tham số capacity (số điểm tối đa trong một ô trước khi phải chia nhỏ) sẽ quyết định hình dáng của cây: Capacity thấp tạo ra cây sâu với nhiều ô nhỏ, giúp lọc truy vấn cực tốt nhưng lại tốn bộ nhớ. Capacity cao tạo ra cây nông với ít nút hơn nhưng lại tốn nhiều công sức để kiểm tra các điểm bên trong mỗi nút. Thực tế cho thấy, mức capacity từ 4-16 thường là điểm cân bằng lý tưởng nhất.
+
+> **Demo tương tác:** Thanh trượt cho phép thay đổi giá trị capacity để thấy sự thay đổi về độ sâu và số lượng nút của cây. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Thao tác tra cứu điểm
+
+Tìm kiếm một tọa độ cụ thể được thực hiện thông qua việc duyệt cây đệ quy: Bắt đầu từ nút gốc, xác định xem tọa độ đó thuộc vùng con nào, rồi lặn sâu vào vùng đó. Quá trình lặp lại cho đến khi chạm tới nút lá. Với một cây cân bằng chứa 1 triệu điểm, chúng ta chỉ mất khoảng 10 bước để tìm thấy mục tiêu (log₄(n)).
+
+> **Demo tương tác:** Minh họa đường đi từ nút gốc đến nút lá khi tìm kiếm một tọa độ bất kỳ. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Truy vấn theo vùng (Range Queries)
+
+Để tìm tất cả các điểm trong một vùng hình chữ nhật: Chúng ta duyệt cây đệ quy và kiểm tra xem khung bao (bounding box) của từng nút có giao với vùng truy vấn hay không. Nếu không giao nhau, chúng ta loại bỏ toàn bộ nhánh đó (pruning). Nếu có giao, ta kiểm tra các điểm trong nút và tiếp tục đi xuống các nút con. Hiệu quả của quadtree phụ thuộc vào kích thước vùng truy vấn: vùng nhỏ trong khu vực thưa thớt sẽ cho tốc độ tối đa, trong khi vùng truy vấn quá lớn bao phủ toàn bộ bản đồ sẽ khiến thuật toán trở lại trạng thái vét cạn.
+
+> **Demo tương tác:** Vẽ một hình chữ nhật trên bản đồ và xem quadtree loại bỏ các vùng không liên quan nhanh như thế nào. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Tìm kiếm lân cận gần nhất (Nearest Neighbor Search)
+
+Khác với truy vấn vùng có ranh giới cố định, việc tìm điểm gần nhất đòi hỏi phải xác định bán kính tìm kiếm linh hoạt. Thuật toán sẽ duy trì một giá trị "khoảng cách tốt nhất hiện tại". Khi duyệt cây, nếu một vùng không có khả năng chứa điểm nào gần hơn khoảng cách này, nó sẽ bị loại bỏ ngay lập tức. Việc ưu tiên thăm các vùng tiềm năng trước giúp thuật toán đạt độ phức tạp xấp xỉ O(log n) trong điều kiện dữ liệu phân bổ tốt.
+
+> **Demo tương tác:** Di chuyển chuột để tìm điểm dữ liệu gần nhất và quan sát các vùng bị loại bỏ trong quá trình tìm kiếm. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Phát hiện va chạm (Collision Detection)
+
+Trong lập trình game và mô phỏng vật lý, việc kiểm tra va chạm giữa mọi cặp đối tượng tốn O(n²). Quadtree tối ưu hóa điều này bằng cách xây dựng lại cây sau mỗi khung hình (frame). Mỗi đối tượng chỉ cần kiểm tra va chạm với các vật thể trong cùng ô hoặc ô lân cận. Nhờ đó, thay vì kiểm tra với hàng ngàn đối tượng, mỗi vật thể chỉ cần so sánh với khoảng 5-15 ứng viên tiềm năng. Đây là kỹ thuật cơ bản trong các game engine để xử lý bước phát hiện va chạm sơ bộ (broad-phase).
+
+> **Demo tương tác:** Mô phỏng hàng trăm hạt chuyển động và va chạm với nhau, sử dụng quadtree để duy trì tốc độ khung hình cao. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Nén hình ảnh (Image Compression)
+
+Quadtree còn được ứng dụng để nén dữ liệu liên tục như pixel ảnh. Nếu một vùng ảnh có màu sắc gần như đồng nhất, ta chỉ cần lưu một giá trị màu trung bình duy nhất cho cả vùng đó. Nếu vùng đó có chi tiết phức tạp, ta mới chia nhỏ thành bốn vùng con và tiếp tục xử lý. Kết quả là các mảng màu lớn được nén lại đáng kể, trong khi các chi tiết sắc nét vẫn được giữ nguyên.
+
+> **Demo tương tác:** Công cụ cho phép tải ảnh lên và xem cách quadtree chia nhỏ ảnh dựa trên mức độ chi tiết của màu sắc. [Xem demo tại bài gốc →](https://growingswe.com/blog/quadtrees)
+
+## Ứng dụng trong thực tế
+
+Quadtree hiện diện trong rất nhiều công nghệ quen thuộc: các dịch vụ bản đồ (để quản lý hình ảnh ở nhiều mức zoom), game engine (để phát hiện va chạm và loại bỏ vật thể khuất - visibility culling), hệ thống thông tin địa lý (GIS), và các loại chỉ mục như GiST trong PostGIS hay SP-GiST trong PostgreSQL. Bên cạnh đó còn có các biến thể như octree (cho không gian 3D), KD-tree hay R-tree. Tất cả đều dựa trên một nguyên lý thống nhất: tổ chức dữ liệu theo vị trí để thuật toán có thể bỏ qua những phần không cần thiết, biến một bài toán triệu bước thành một quy trình chỉ trong chớp mắt.

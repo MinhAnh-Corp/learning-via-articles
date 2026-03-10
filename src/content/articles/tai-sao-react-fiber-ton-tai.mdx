@@ -1,0 +1,149 @@
+---
+title_en: "Understanding Why React Fiber Exists"
+title_vi: "Tại sao React Fiber lại tồn tại? Tìm hiểu cơ chế điều phối của React"
+description_en: "Understanding Why React Fiber Exists and how it lets React pause, prioritize."
+description_vi: "Tìm hiểu lý do React Fiber ra đời và cách nó giúp React có khả năng tạm dừng, ưu tiên các tác vụ để mang lại trải nghiệm mượt mà hơn."
+author: "Sankalpa Acharya"
+published: "2026-02-10"
+source_url: "https://inside-react.vercel.app/blog/understanding-why-react-fiber-exists"
+tags: ["React", "JavaScript", "Fiber", "Frontend"]
+---
+
+Cách đây một thời gian, khi đang lướt Twitter (X), tôi vô tình bắt gặp bài đăng này.
+
+Đây là một bài viết cực kỳ chất lượng. Nó tóm gọn rất nhiều kiến thức về React. Trong đó, tác giả có đề cập đến một ý khiến tôi phải suy nghĩ và thôi thúc tôi tìm hiểu sâu hơn về nội dung bên dưới:
+
+> "React cuối cùng đã thoát khỏi sự kìm kẹp của JS callstack. Thay vì render theo kiểu đệ quy, giờ đây nó là một quá trình lặp đi lặp lại qua từng fiber một. Điều đó có nghĩa là React có thể tạm dừng. Nghĩa là nó có thể dừng ngay giữa lúc đang render, bỏ dở mọi thứ, để trình duyệt thực hiện việc vẽ lại (repaint), xử lý input, nghỉ ngơi một chút, rồi sau đó tiếp tục chính xác tại nơi nó vừa dừng lại bên trong cây UI khổng lồ đó. Sẽ không còn cảnh 'ôi không, tôi bị kẹt sâu trong đệ quy rồi'. Bạn không thể bị kẹt vì React không còn sử dụng ngăn xếp (stack) mặc định của trình duyệt nữa; nó tự xây dựng một cái cho riêng mình."
+
+"React cuối cùng đã thoát khỏi JS callstack" - nghe thật thú vị. Vậy vấn đề của JS callstack là gì mà React phải tìm cách loại bỏ nó?
+
+## Đối tượng của bài viết
+Bài viết này dành cho những nhà phát triển đã nắm vững kiến thức cơ bản về React và muốn hiểu sâu hơn về cơ chế vận hành bên trong. Bạn nên làm quen với các khái niệm của JavaScript như **callstack** và **event loop**. Chúng ta sẽ khám phá lý do tại sao React Fiber tồn tại dưới góc nhìn của chính React.
+
+Để hiểu giải pháp, trước tiên chúng ta phải biết vấn đề: điều gì đã cản trở hiệu suất của React và đội ngũ phát triển đã nghĩ ra điều gì.
+
+## Câu chuyện về Đơn luồng (Single Thread)
+Chúng ta đều biết JavaScript là ngôn ngữ lập trình đơn luồng (single-threaded). Trong mỗi ngữ cảnh thực thi (execution context), nó chỉ có một luồng duy nhất và một callstack để xử lý mã nguồn theo từng dòng, từ trên xuống dưới.
+
+```javascript
+function doSomethingHeavy() {
+  for (let i = 0; i < 1_000_000_000; i++) {} // Chặn luồng chính (block thread)
+  
+  console.log("Hoàn thành tác vụ nặng");
+}
+
+doSomethingHeavy();
+
+do_important_task(); // Tác vụ quan trọng
+```
+
+Trong ví dụ trên, một khi tác vụ `doSomethingHeavy` bắt đầu, nó sẽ chạy cho đến khi kết thúc. Tác vụ quan trọng `do_important_task` chỉ được thực thi sau khi vòng lặp nặng nề kia hoàn tất.
+
+Đây là một chương trình đồng bộ đơn giản. JavaScript cũng hỗ trợ lập trình bất đồng bộ thông qua **event loop**. Bạn có thể đề xuất rằng chúng ta có thể đổi chỗ hai hàm trên nếu muốn tác vụ quan trọng chạy trước. Nhưng đó là khi chúng ta biết trước đâu là tác vụ quan trọng. Chuyện gì sẽ xảy ra nếu mọi thứ diễn ra một cách ngẫu nhiên (nondeterministic)?
+
+Khi bạn đang thực hiện một tác vụ nặng, một tác vụ quan trọng đột ngột xuất hiện (ví dụ: người dùng click chuột). Bạn không thể dừng chương trình đang chạy giữa chừng để xử lý; bạn không thể đột ngột làm trống callstack để làm việc khác.
+
+Hãy xem một ví dụ thực tế:
+
+> **Demo tương tác:** Thử nhấn nút "Start Work" (chặn luồng chính trong 3 giây) sau đó thử nhấn nút "+1". Bạn sẽ thấy giá trị không tăng ngay lập tức mà phải đợi tác vụ nặng kết thúc. [Xem demo tại bài gốc →](https://inside-react.vercel.app/blog/understanding-why-react-fiber-exists)
+
+Sự chậm trễ này tạo ra cảm giác giật lag và trải nghiệm người dùng cực kỳ tệ.
+
+## React 15 và vấn đề đệ quy
+Bộ đối soát (reconciler) của React 15 duyệt cây component bằng các lời gọi hàm đệ quy. Một khi đã bắt đầu, nó không thể dừng lại.
+
+```javascript
+function updateComponent(component) {
+  const children = component.render();
+  
+  children.forEach(child => {
+    updateComponent(child); // ← Đệ quy
+  });
+}
+```
+
+Mỗi lời gọi `updateComponent` sẽ đẩy một khung hình (frame) mới vào JS callstack. Với một cây UI có 1,000 components, sẽ có 1,000 stack frames lồng vào nhau.
+
+Hãy tưởng tượng có một ô input mà mỗi khi người dùng nhập, nội dung sẽ hiển thị lên màn hình. Khi người dùng nhập ký tự "s", React bắt đầu quá trình render, gọi đệ quy liên tục khiến callstack đầy ắp. Khi đang thực hiện được một nửa, người dùng nhập tiếp chữ "a". Lúc này React không thể dừng lại và nói: "Chờ chút, người dùng vừa nhập thêm, để tôi bắt đầu lại với dữ liệu mới".
+
+JavaScript không có cơ chế để tạm dừng một callstack, lưu trạng thái của nó và tiếp tục sau đó. React buộc phải xử lý xong chữ "s" trước khi nó có thể nhận ra bạn đã nhập chữ "a". Mỗi lần nhấn phím kích hoạt một lần đối soát (reconciliation) đầy đủ, và React bị mắc kẹt trong đệ quy trong khi các thao tác nhập liệu của bạn cứ thế xếp hàng chờ.
+
+Đây là lý do tại sao các ứng dụng React đời cũ đôi khi mang lại cảm giác phản hồi chậm.
+
+## Độ ưu tiên (Priority)
+
+Vấn đề thứ hai là React đối xử với mọi cập nhật như nhau. Một lần click nút có độ ưu tiên ngang hàng với một yêu cầu lấy dữ liệu dưới nền (background data fetch). Một hiệu ứng chuyển động (animation) cũng quan trọng bằng một dòng log.
+
+Nhưng thực tế, có những cập nhật cực kỳ khẩn cấp (người dùng gõ phím, click) và có những thứ có thể chờ (analytics, prefetching). React 15 không có cách nào diễn đạt điều này vì một khi quá trình đối soát bắt đầu, nó phải chạy đến khi về đích.
+
+Giả sử bạn fetch một danh sách 500 sản phẩm. Khi dữ liệu trả về, React bắt đầu render 500 mục đó lên màn hình. Giữa chừng, khi mới render được 250 mục, bạn nhập một ký tự vào ô tìm kiếm.
+
+React nên làm gì?
+Nó nên dừng việc render danh sách sản phẩm lại. Ưu tiên xử lý phím bấm trước. Cập nhật ô input ngay lập tức. Đó là điều người dùng quan tâm nhất. Việc hiển thị sản phẩm chậm 100ms khó có thể nhận ra, nhưng gõ phím mà 100ms sau mới hiện chữ thì cực kỳ khó chịu.
+
+## Chúng ta cần gì?
+
+Trước khi tìm giải pháp, chúng ta cần xác định rõ mục tiêu:
+1. Có thể tạm dừng quá trình render giữa chừng (ở cấp độ callstack).
+2. Có thể phân cấp độ ưu tiên cho các cập nhật khác nhau.
+
+Tại sao phải tạm dừng ở cấp độ callstack? Bởi vì đó là cách trình duyệt vận hành. Chừng nào callstack còn bận, trình duyệt không thể đưa các sự kiện từ hàng đợi (macro queue) vào để xử lý. Trình duyệt chỉ có thể nói: "Làm xong việc trên đĩa của bạn đi rồi tôi sẽ đưa thêm việc mới", nhưng nếu hàm đệ quy của bạn mất quá nhiều thời gian, trình duyệt sẽ mất quyền kiểm soát.
+
+## Giải pháp: Fiber
+
+Đội ngũ React nhận ra rằng vấn đề không chỉ nằm ở thuật toán đối soát, mà còn ở cách nó được thực thi. Không có sự tối ưu nhỏ lẻ nào có thể khắc phục được điều này vì đệ quy trong JavaScript về cơ bản là không thể bị ngắt quãng.
+
+Thay vì cố gắng uốn nắn JS callstack, React đã từ bỏ mô hình đệ quy hoàn toàn. Họ xây dựng một lớp trừu tượng riêng chồng lên trên. Đó chính là **Fiber**.
+
+Fiber không kiểm soát callstack (không gì có thể làm thế vì nó là cốt lõi của JS engine). Thay vào đó, Fiber kiểm soát cách chúng ta cấu trúc và thực thi công việc render.
+
+Thay vì chạy toàn bộ quá trình render cùng một lúc, React chia nhỏ quá trình đối soát thành các **đơn vị công việc (units of work)**. React xử lý một đơn vị, sau đó trả quyền kiểm soát lại cho trình duyệt. Callstack trống. Trình duyệt xử lý các sự kiện đang chờ. Sau đó React quay lại và xử lý đơn vị tiếp theo.
+
+Quá trình này diễn ra trong các lát cắt thời gian (**time slices**). React làm việc khoảng ~5ms, sau đó nhường chỗ (yield). Trình duyệt "thở". Rồi React tiếp tục nơi nó đã dừng.
+
+> **Lưu ý:** Scheduler hiện đại của React có cơ chế động và liên kết với khung hình (frame-aligned), không chỉ cố định ở 5ms như các phiên bản cũ.
+
+## Fiber dưới góc độ cấu trúc dữ liệu
+Nếu không dùng callstack, bạn cần một thứ khác để theo dõi tiến trình duyệt cây component. Đó là lý do Fiber ra đời như một cấu trúc dữ liệu dạng **Danh sách liên kết (Linked List)**.
+
+```javascript
+const fiber = {
+  type: 'div',           // Loại component
+  
+  child: h1Fiber,        // Trỏ đến con đầu tiên
+  sibling: buttonFiber,  // Trỏ đến anh em kế tiếp  
+  return: AppFiber,      // Trỏ về cha
+  
+  // ... và nhiều thuộc tính khác để quản lý trạng thái
+};
+```
+
+Mỗi "Fiber" đại diện cho một phần của UI (một div, một button, hay một component). Với các con trỏ `child`, `sibling`, và `return`, React có thể tự mình duyệt cây UI, dừng lại ở bất kỳ đâu và tiếp tục sau đó bằng cách lưu lại tham chiếu của fiber hiện tại.
+
+## Cách duyệt cây Fiber hoạt động
+
+1.  **Đi xuống con (Child):** Hoàn thành việc trên một fiber, React kiểm tra xem nó có con không. Nếu có, con đó là đơn vị công việc tiếp theo.
+2.  **Sang anh em (Sibling):** Nếu không có con, React tìm anh em kế tiếp.
+3.  **Đi lên (Return):** Nếu không có cả con lẫn anh em, React đi ngược lên cha để tìm anh em của cha (vòng lặp cho đến khi tìm thấy công việc mới).
+4.  **Dừng lại ở Gốc (Root):** Quá trình kết thúc khi quay lại đến root và không còn gì để xử lý.
+
+## Time Slicing thực tế hoạt động như thế nào?
+
+Khi bạn kích hoạt một lần render lớn (ví dụ: 500 kết quả tìm kiếm):
+1. Trình duyệt cho React khoảng 5ms để làm việc.
+2. React bắt đầu duyệt cây fiber. Xử lý fiber #1, trỏ sang #2, tiếp tục đến #10.
+3. Sau mỗi vài fiber, React kiểm tra thời gian: "Mình đã làm việc đủ 5ms chưa?".
+4. Nếu rồi, React **dừng lại**. Nó lưu một con trỏ vào vị trí hiện tại (ví dụ: fiber #15) và thoát khỏi hàm. Callstack được giải phóng.
+5. Trình duyệt nhận lại quyền kiểm soát, xử lý phím bấm hoặc click của người dùng, thực hiện vẽ lại màn hình.
+6. Khi trình duyệt rảnh, nó gọi lại React. React lấy con trỏ cũ ra và tiếp tục từ fiber #15.
+
+Kết quả là thao tác gõ phím của bạn luôn mượt mà vì trình duyệt luôn có khoảng trống để phản hồi, trong khi React âm thầm hoàn thành việc render ở chế độ nền.
+
+## Kết luận
+Đó chính là bản chất của Fiber.
+
+Dù có nhiều tranh luận so sánh React với các thư viện khác như Vue hay SolidJS (vốn sử dụng tín hiệu - signals hoặc theo dõi hạt mịn - fine-grained tracking để cập nhật nhanh hơn), React vẫn giữ vững triết lý của mình: **UI là hàm của trạng thái (UI as a function of state)**. 
+
+Fiber ra đời để duy trì mô hình lập trình đơn giản đó nhưng vẫn đảm bảo ứng dụng không bị "đóng băng" trước các tác vụ nặng. Nó xử lý những phần phức tạp về điều phối (scheduling) để bạn có thể tập trung vào việc viết code logic.
+
+Cảm ơn bạn đã đọc! ❤️

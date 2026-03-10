@@ -1,11 +1,11 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 
-const jsonFiles = import.meta.glob('../content/articles/*.json', { eager: true });
-const articles = Object.entries(jsonFiles)
+const mdxFiles = import.meta.glob('../content/articles/*.mdx', { eager: true });
+const articles = Object.entries(mdxFiles)
   .map(([path, mod]: [string, any]) => ({
-    slug: path.split('/').pop()!.replace('.json', ''),
-    ...mod.default,
+    slug: path.split('/').pop()!.replace('.mdx', ''),
+    ...mod.frontmatter,
   }))
   .sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
 ---

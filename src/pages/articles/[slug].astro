@@ -3,61 +3,72 @@ import ArticleLayout from '../../layouts/ArticleLayout.astro';
 import type { GetStaticPaths } from 'astro';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const jsonFiles = import.meta.glob('../../content/articles/*.json', { eager: true });
-  return Object.entries(jsonFiles).map(([path, mod]: [string, any]) => ({
-    params: { slug: path.split('/').pop()!.replace('.json', '') },
-    props: { content: mod.default },
+  const mdxFiles = import.meta.glob('../../content/articles/*.mdx', { eager: true });
+  return Object.entries(mdxFiles).map(([path, mod]: [string, any]) => ({
+    params: { slug: path.split('/').pop()!.replace('.mdx', '') },
+    props: { frontmatter: mod.frontmatter, Content: mod.Content },
   }));
 };
 
-const { content } = Astro.props;
+const { frontmatter, Content } = Astro.props;
 ---
 
 <ArticleLayout
-  title={content.title_vi}
-  description={content.description_vi}
-  author={content.author}
-  published={content.published}
-  sourceUrl={content.source_url}
-  tags={content.tags}
+  title={frontmatter.title_vi}
+  description={frontmatter.description_vi}
+  author={frontmatter.author}
+  published={frontmatter.published}
+  sourceUrl={frontmatter.source_url}
+  tags={frontmatter.tags}
 >
-  {content.sections.map((section: any) => (
-    <section class="article-section">
-      <h2>{section.heading_vi}</h2>
-      <div class="section-content" set:html={section.content_vi} />
-      {section.has_interactive_demo && (
-        <div class="interactive-note">
-          <strong>Demo tương tác:</strong> {section.demo_description}
-          <br />
-          <a href={content.source_url} target="_blank" rel="noopener">
-            Xem demo tại bài gốc &rarr;
-          </a>
-        </div>
-      )}
-    </section>
-  ))}
+  <div class="mdx-content">
+    <Content />
+  </div>
 </ArticleLayout>
 
 <style>
-  .article-section {
-    margin-bottom: 2rem;
+  .mdx-content :global(h2) {
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
   }
 
-  .section-content :global(ul),
-  .section-content :global(ol) {
+  .mdx-content :global(p) {
+    margin-bottom: 0.75rem;
+  }
+
+  .mdx-content :global(ul),
+  .mdx-content :global(ol) {
     margin: 0.75rem 0;
     padding-left: 1.5rem;
   }
 
-  .section-content :global(li) {
+  .mdx-content :global(li) {
     margin-bottom: 0.4rem;
   }
 
-  .section-content :global(strong) {
+  .mdx-content :global(strong) {
     color: #f1f5f9;
   }
 
-  .section-content :global(p) {
-    margin-bottom: 0.75rem;
+  .mdx-content :global(blockquote) {
+    background: #1a2744;
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+    font-size: 0.9rem;
+    color: #93c5fd;
+  }
+
+  .mdx-content :global(blockquote a) {
+    color: #60a5fa;
+    font-weight: 600;
+  }
+
+  .mdx-content :global(code) {
+    background: #0d1117;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
   }
 </style>

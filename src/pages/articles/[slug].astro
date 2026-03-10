@@ -1,0 +1,63 @@
+---
+import ArticleLayout from '../../layouts/ArticleLayout.astro';
+import type { GetStaticPaths } from 'astro';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const jsonFiles = import.meta.glob('../../content/articles/*.json', { eager: true });
+  return Object.entries(jsonFiles).map(([path, mod]: [string, any]) => ({
+    params: { slug: path.split('/').pop()!.replace('.json', '') },
+    props: { content: mod.default },
+  }));
+};
+
+const { content } = Astro.props;
+---
+
+<ArticleLayout
+  title={content.title_vi}
+  description={content.description_vi}
+  author={content.author}
+  published={content.published}
+  sourceUrl={content.source_url}
+  tags={content.tags}
+>
+  {content.sections.map((section: any) => (
+    <section class="article-section">
+      <h2>{section.heading_vi}</h2>
+      <div class="section-content" set:html={section.content_vi} />
+      {section.has_interactive_demo && (
+        <div class="interactive-note">
+          <strong>Demo tương tác:</strong> {section.demo_description}
+          <br />
+          <a href={content.source_url} target="_blank" rel="noopener">
+            Xem demo tại bài gốc &rarr;
+          </a>
+        </div>
+      )}
+    </section>
+  ))}
+</ArticleLayout>
+
+<style>
+  .article-section {
+    margin-bottom: 2rem;
+  }
+
+  .section-content :global(ul),
+  .section-content :global(ol) {
+    margin: 0.75rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .section-content :global(li) {
+    margin-bottom: 0.4rem;
+  }
+
+  .section-content :global(strong) {
+    color: #f1f5f9;
+  }
+
+  .section-content :global(p) {
+    margin-bottom: 0.75rem;
+  }
+</style>

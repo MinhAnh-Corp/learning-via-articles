@@ -1,0 +1,113 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const jsonFiles = import.meta.glob('../content/articles/*.json', { eager: true });
+const articles = Object.entries(jsonFiles)
+  .map(([path, mod]: [string, any]) => ({
+    slug: path.split('/').pop()!.replace('.json', ''),
+    ...mod.default,
+  }))
+  .sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
+---
+
+<BaseLayout title="Learning Hub - Bài viết dịch tiếng Việt" description="Tổng hợp các bài viết kỹ thuật hay, dịch sang tiếng Việt để học tập và chia sẻ">
+  <section class="hero">
+    <h1>Learning Hub</h1>
+    <p>Tổng hợp các bài viết kỹ thuật hay, dịch sang tiếng Việt.</p>
+  </section>
+
+  <section class="articles">
+    {articles.map((article, index) => (
+      <a href={`/articles/${article.slug}`} class="card">
+        <div class="card-number">#{index + 1}</div>
+        <div class="card-body">
+          <h2>{article.title_vi}</h2>
+          <p class="card-title-en">{article.title_en}</p>
+          <p class="card-desc">{article.description_vi}</p>
+          <div class="card-meta">
+            <span>{article.author}</span>
+            <span>{new Date(article.published).toLocaleDateString('vi-VN')}</span>
+            <div class="card-tags">
+              {(article.tags || []).map((tag: string) => <span class="tag">{tag}</span>)}
+            </div>
+          </div>
+        </div>
+      </a>
+    ))}
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+
+  .hero p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+  }
+
+  .articles {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .card {
+    display: flex;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .card-number {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.2rem;
+    min-width: 2.5rem;
+    padding-top: 0.2rem;
+  }
+
+  .card-body h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .card-title-en {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-desc {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .card-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .card-tags {
+    display: flex;
+    gap: 0.4rem;
+  }
+</style>

@@ -1,0 +1,208 @@
+---
+title_en: "How do I implement passkeys in Next.js?"
+title_vi: "Cách triển khai passkey trong Next.js"
+description_en: "Learn how passkeys enable passwordless authentication with phishing-resistant cryptography and how to implement it in Next.js."
+description_vi: "Tìm hiểu cách passkey giúp xác thực không mật khẩu bằng mã hóa chống lừa đảo và cách triển khai chi tiết trong ứng dụng Next.js."
+author: "Brian Morrison II"
+published: "2025-12-09"
+source_url: "https://clerk.com/blog/how-do-i-implement-passkeys-in-nextjs"
+tags: ["Next.js", "Authentication", "Passkeys", "WebAuthn"]
+---
+
+Passkey hứa hẹn một tương lai nơi bạn không còn phải ghi nhớ mật khẩu, đồng thời khiến các cuộc tấn công lừa đảo (phishing) và đánh cắp tài khoản (credential stuffing) trở nên vô hiệu.
+
+Nếu bạn đang xây dựng hoặc phát triển một sản phẩm, passkey giúp giảm thiểu rủi ro, hạ thấp chi phí hỗ trợ và mang lại trải nghiệm đăng nhập mượt mà, giúp tăng tỷ lệ chuyển đổi. Bài viết này sẽ phân tích passkey là gì, tại sao chúng an toàn hơn các phương pháp xác thực truyền thống và cách chúng vận hành trong hệ sinh thái trình duyệt và thiết bị hiện nay.
+
+Sau đó, chúng ta sẽ đi sâu vào cách triển khai cụ thể trong Next.js, tập trung vào cả luồng đăng ký (tạo passkey) và luồng xác thực (đăng nhập). Bạn sẽ thấy cách trình duyệt, bộ xác thực (authenticator) và máy chủ phối hợp với nhau thông qua các "thử thách" (challenges) của WebAuthn.
+
+**Tóm tắt nhanh:**
+
+*   **Passkey thay thế mật khẩu bằng mã hóa khóa công khai (public-key cryptography):** Thiết bị tạo ra một cặp khóa, giữ khóa bí mật (private key) an toàn sau lớp khóa sinh trắc học hoặc mã PIN, và máy chủ chỉ lưu trữ khóa công khai (public key).
+*   **Cơ chế hoạt động:** Trong quá trình đăng nhập, máy chủ gửi một thử thách dùng một lần. Thiết bị sẽ ký tên vào thử thách đó để chứng minh quyền sở hữu mà không cần truyền đi bất kỳ bí mật nào.
+*   **Chống lừa đảo (Phishing-resistant):** Khóa bí mật chỉ phản hồi với đúng tên miền (domain) gốc đã đăng ký.
+*   **Triển khai trong Next.js:** Bạn có thể tự triển khai thủ công bằng thư viện `SimpleWebAuthn` với hai lượt phản hồi (round-trips) cho mỗi luồng đăng ký và xác thực.
+
+## Passkey là gì?
+
+Passkey là một hình thức xác thực không mật khẩu (passwordless), có khả năng chống lừa đảo hiện đại. Nó thay thế mật khẩu truyền thống bằng các thông tin xác thực mã hóa được gắn chặt với thiết bị của người dùng và được mở khóa cục bộ qua sinh trắc học (như Face ID, Touch ID, Windows Hello) hoặc mã PIN thiết bị.
+
+Khi người dùng đăng ký, thiết bị sẽ tạo ra một cặp khóa công khai/bí mật. Máy chủ chỉ lưu trữ khóa công khai và yêu cầu thiết bị chứng minh quyền sở hữu khóa bí mật khi đăng nhập. Vì khóa bí mật không bao giờ rời khỏi thiết bị, passkey mang lại độ tin cậy đa yếu tố (MFA) mặc định: kết hợp giữa "thứ bạn có" (thiết bị) và "thứ là bạn" (sinh trắc học) hoặc "thứ bạn biết" (PIN).
+
+> **Lưu ý:** WebAuthn là một tiêu chuẩn của W3C và là một phần của đặc tả FIDO2, cho phép các trang web xác thực người dùng thông qua mã hóa khóa công khai.
+
+## Triển khai passkey trong Next.js với WebAuthn
+
+Để hiểu rõ cơ chế, chúng ta sẽ xem xét các phần quan trọng nhất của ứng dụng khi xử lý passkey. Chúng ta sẽ chia mã nguồn thành hai phần: **Đăng ký (Registration)** và **Xác thực (Authentication)**.
+
+Hướng dẫn này giả định bạn đã quen thuộc với Next.js App Router, TypeScript cơ bản và cách sử dụng cơ sở dữ liệu để lưu trữ thông tin người dùng.
+
+### 1. Luồng đăng ký passkey
+
+Trước khi xem mã nguồn, hãy điểm qua quy trình ở mức cao:
+
+1.  **Người dùng nhập username:** Người dùng nhập tên đăng ký vào form trên trình duyệt.
+2.  **Trình duyệt yêu cầu tùy chọn đăng ký:** Gửi yêu cầu đến server để lấy các `registration options`.
+3.  **Server chuẩn bị tùy chọn:** Server tạo bản ghi người dùng, tạo một `challenge` ngẫu nhiên và trả về các tùy chọn đăng ký cho trình duyệt.
+4.  **Trình duyệt hiển thị thông báo đăng ký hệ thống:** Hệ điều hành hiển thị thông báo "Tạo passkey" hoặc "Sử dụng Face ID".
+5.  **Người dùng phê duyệt:** Qua sinh trắc học hoặc khóa bảo mật vật lý.
+6.  **Bộ xác thực tạo cặp khóa mới:** Khóa bí mật được lưu an toàn trên thiết bị.
+7.  **Trình duyệt gửi thông tin xác thực lên server:** Bao gồm khóa công khai và các định danh liên quan.
+8.  **Server xác thực và lưu trữ:** Kiểm tra chữ ký và thử thách, sau đó lưu khóa công khai vào database.
+
+#### Thành phần đăng ký phía Client
+
+Sử dụng thư viện `@simplewebauthn/browser` để xử lý giao thức WebAuthn:
+
+```tsx
+'use client'
+// src/components/PasskeyRegister.tsx
+import { startRegistration } from '@simplewebauthn/browser'
+
+// ... (xử lý state)
+
+async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault()
+  
+  // 1. Kiểm tra trình duyệt có hỗ trợ WebAuthn không
+  if (!window.PublicKeyCredential) {
+    throw new Error('Trình duyệt không hỗ trợ WebAuthn')
+  }
+
+  // 2. Lấy tùy chọn đăng ký từ server
+  const optionsRes = await fetch('/api/register/options', {
+    method: 'POST',
+    body: JSON.stringify({ username, displayName }),
+  })
+  const options = await optionsRes.json()
+
+  // 3. Kích hoạt luồng tạo passkey của trình duyệt
+  const credential = await startRegistration({ optionsJSON: options })
+
+  // 4. Gửi thông tin xác thực mới lên server để kiểm tra và lưu trữ
+  const verifyRes = await fetch('/api/register/verify', {
+    method: 'POST',
+    body: JSON.stringify({ ...credential, username }),
+  })
+
+  if (verifyRes.ok) {
+    setSuccess(true)
+  }
+}
+```
+
+#### Tạo tùy chọn đăng ký trên Server
+
+Server sử dụng `@simplewebauthn/server` để tạo `challenge` và cấu hình cách bộ xác thực hoạt động.
+
+```ts
+// src/app/api/register/options/route.ts
+import { generateRegistrationOptions } from '@simplewebauthn/server'
+
+export async function POST(request: NextRequest) {
+  const { username, displayName } = await request.json()
+  const user = await findOrCreateUser(username, displayName)
+
+  const options = await generateRegistrationOptions({
+    rpName: 'Passkey Demo',
+    rpID: process.env.NEXT_PUBLIC_RP_ID || 'localhost',
+    userName: username,
+    userDisplayName: displayName,
+    attestationType: 'none',
+    authenticatorSelection: {
+      residentKey: 'preferred',
+      userVerification: 'preferred',
+    },
+  })
+
+  // Lưu challenge vào DB để xác thực sau này (hết hạn sau 60s)
+  await insertChallenge(user.id, 'registration', options.challenge, 60000)
+
+  return NextResponse.json(options)
+}
+```
+
+### 2. Luồng xác thực passkey
+
+Quy trình đăng nhập tương tự như đăng ký:
+
+1.  **Người dùng nhập username:** Gửi lên server để lấy thử thách.
+2.  **Server chuẩn bị tùy chọn:** Tìm các passkey đã đăng ký của người dùng này và gửi về client kèm `challenge` mới.
+3.  **Trình duyệt hiển thị thông báo đăng nhập:** "Đăng nhập bằng Face ID?".
+4.  **Người dùng phê duyệt:** Thiết bị dùng khóa bí mật để ký vào thử thách.
+5.  **Server xác minh chữ ký:** Kiểm tra chữ ký với khóa công khai đã lưu.
+
+#### Thành phần xác thực phía Client
+
+```tsx
+// src/components/PasskeyAuth.tsx
+import { startAuthentication } from '@simplewebauthn/browser'
+
+async function handleSubmit(e: React.FormEvent) {
+  // 1. Lấy tùy chọn xác thực từ server
+  const optionsRes = await fetch('/api/auth/options', {
+    method: 'POST',
+    body: JSON.stringify({ username }),
+  })
+  const options = await optionsRes.json()
+
+  // 2. Kích hoạt luồng xác thực của trình duyệt
+  const credential = await startAuthentication({ optionsJSON: options })
+
+  // 3. Gửi chữ ký lên server để xác minh
+  const verifyRes = await fetch('/api/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ ...credential, username }),
+  })
+
+  if (verifyRes.ok) {
+    // Đăng nhập thành công!
+  }
+}
+```
+
+#### Xác minh phản hồi xác thực trên Server
+
+Đây là bước cực kỳ quan trọng để đảm bảo tính an toàn.
+
+```ts
+// src/app/api/auth/verify/route.ts
+import { verifyAuthenticationResponse } from '@simplewebauthn/server'
+
+export async function POST(request: NextRequest) {
+  const { username, ...credential } = await request.json()
+  const user = await getUserByUsername(username)
+  
+  // Kiểm tra thử thách trong database
+  const challengeValid = await consumeChallenge(user.id, 'authentication', clientDataJSON.challenge)
+  
+  // Lấy khóa công khai đã lưu từ DB
+  const dbCredential = await getCredentialById(credential.id)
+
+  const verification = await verifyAuthenticationResponse({
+    response: credential,
+    expectedChallenge: clientDataJSON.challenge,
+    expectedOrigin: process.env.NEXT_PUBLIC_ORIGIN,
+    expectedRPID: process.env.NEXT_PUBLIC_RP_ID,
+    credential: {
+      id: dbCredential.credential_id,
+      publicKey: dbCredential.public_key_bytes,
+      counter: dbCredential.sign_count,
+    },
+  })
+
+  if (verification.verified) {
+    // Cập nhật sign_count để chống sao chép credential
+    await updateCredentialSignCount(credential.id, verification.authenticationInfo.newCounter)
+    // Tại đây bạn sẽ tạo session, thiết lập cookie hoặc JWT
+    return NextResponse.json({ ok: true })
+  }
+}
+```
+
+## Kết luận
+
+Passkey giúp loại bỏ những rủi ro của mật khẩu truyền thống bằng cách sử dụng mã hóa khóa công khai mạnh mẽ và gắn liền với tên miền. Bằng cách tận dụng các bộ xác thực có sẵn trên thiết bị và tiêu chuẩn WebAuthn/FIDO2, bạn mang lại cho người dùng trải nghiệm đăng nhập an toàn, chống lừa đảo và tích hợp sẵn MFA mà không làm phức tạp thêm quy trình.
+
+Trong hướng dẫn này, chúng ta đã khám phá cơ chế hoạt động và cách kết nối các thành phần trong một ứng dụng Next.js bằng `SimpleWebAuthn`. Việc triển khai này đòi hỏi sự cẩn trọng trong việc xử lý dữ liệu ở cả hai phía client và server để đảm bảo tính bảo mật tối đa.
+
+> **Tìm hiểu thêm:** Bạn có thể tham khảo mã nguồn đầy đủ của bản demo này trên GitHub để tự mình thử nghiệm luồng đăng ký và đăng nhập. [Xem mã nguồn tại đây →](https://github.com/clerk/nextjs-passkeys-demo)
